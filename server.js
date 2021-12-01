@@ -46,16 +46,13 @@ const userSchema = new mongoose.Schema({
 const User = new mongoose.model('User', userSchema);
 
 
-
 // 1. You can POST to /api/users with form data username to create a new user.
 // 2. The returned response from POST /api/users with form data username will be an object with username and _id properties.
 // 3. You can make a GET request to /api/users to get a list of all users.
 // 4. The GET request to /api/users returns an array.
 // 5. Each element in the array returned from GET /api/users is an object literal containing a user's username and _id.
 app.post("/api/users", (req, res) => {
-  const newUser = req.body.username;
-  const user = new User({ username: newUser });
-  
+  const user = new User({ username: req.body.username });
   user.save((err) => {
     if (err) return console.log(err);
   });
@@ -77,32 +74,35 @@ app.get("/api/users", (req, res) => {
 });
 
 
+
 // 6. You can POST to /api/users/:_id/exercises with form data description, duration, and optionally date. If no date is supplied, the current date will be used.
 // 7. The response returned from POST /api/users/:_id/exercises will be the user object with the exercise fields added.
 app.post("/api/users/:_id/exercises", (req, res) => {
-  const newId = req.params._id;
-  User.findById(newId, (err, foundUser) => {
-    if (foundUser) {
-      const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
-      const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const newDesc = req.body.description;
-      const newDur = parseInt(req.body.duration);
-      const date = req.body.date;
-      const newDate = date === '' ? new Date() : new Date(date);
-      const dateString = `${DAY[newDate.getDay()]} ${MONTHS[newDate.getMonth()]} ${newDate.getDate()} ${newDate.getFullYear()}`
-      newLog = {
-          description: newDesc,
-          duration: newDur,
-          date: dateString
-      }
-      foundUser.exercices.push(newLog)
-      foundUser.save();
-      console.log(foundUser);
+  const userId = req.params._id;
 
-      res.json({ _id: newId, username: foundUser.username, date: dateString, duration: newDur, description: newDesc });
-    }
+  const newExercise = {
+    description: req.body.description,
+    duration: +req.body.duration,
+    date: req.body.date
+  }
+
+  User.findByIdAndUpdate(userId, {$push: { exercices: newExercise } },
+    {new: true}, (err, foundUser) => {
+    if (err) return console.log(err);
+
+    let returnObj = {
+      _id: userId,
+      username: foundUser.username,
+      description: newExercise.description,
+      duration: newExercise.duration,
+      date: new Date(newExercise.date).toDateString()
+    };
+
+    res.json(returnObj);
   });
+
 });
+
 
 
 // 8. A GET request to /api/users/:id/logs will return the user object with a log array of all the exercises added.
@@ -111,21 +111,42 @@ app.post("/api/users/:_id/exercises", (req, res) => {
 // 11. The duration property of any object in the log array that is returned from GET /api/users/:id/logs should be a number.
 // 12. The date property of any object in the log array that is returned from GET /api/users/:id/logs should be a string.. Use the dateString format of the Date API.
 
+
 app.get("/api/users/:_id/logs", (req, res) => {
-  const detailId = req.params._id;
-  User.findById(detailId, (err, foundUser) => {
-    const id = foundUser._id;
-    const username = foundUser.username;
-    const logs = foundUser.exercices;
-    const count = logs.length;
-    res.json({
-      _id: id,
-      username: username,
-      count: count,
-      logs: logs,
-    }) 
-  })
+  let userId = req.params._id;
+  let dFrom = req.query.from || '0000-00-00';
+  let dTo = req.query.to || '9999-99-99';
+  let limit = +req.query.limit || 10000;
+  User.findById(userId, function (err, user) {
+    if (err) return console.log(err);
+    let newLog = user.exercices.filter(e => e.date >= dFrom && e.date <= dTo)
+      .map(e => (
+        {
+          description: e.description, 
+          duration: e.duration, 
+          date: e.date
+        }
+      ))
+      .slice(0,limit);
+    
+    let logObj = {
+      _id: userId,
+      username: user.username,
+      count: newLog.length,
+      log: newLog
+    };
+    res.json(logObj);
+  });
 });
+
+
+
+
+
+
+// from=2021-11-17&to=2021-12-2&limit=3
+
+
 
 app.use(cors())
 app.use(express.static('public'))
